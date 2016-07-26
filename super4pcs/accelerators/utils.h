@@ -53,16 +53,11 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "../utils.h"
+
 
 namespace Super4PCS{
 namespace Utils{
-
-//! \brief Compile time pow
-template<typename baseT, typename expoT>
-constexpr baseT POW(baseT base, expoT expo)
-{
-    return (expo != 0 )? base * POW(base, expo -1) : 1;
-}
 
 
 namespace internal{
@@ -142,7 +137,8 @@ UnrollIndexLoop(const ndIndexT& coord,
                 IndexT        cdim,
                 SizeT         gsize){
   return (cdim != 0)
-    ? ( internal::IndexValidator<validate>::validate(IndexT(coord[cdim]), gsize)*POW(gsize, cdim) +
+    ? ( internal::IndexValidator<validate>::validate(IndexT(coord[cdim]), gsize)*
+        FastRegistration::Utils::Pow(gsize, cdim) +
         UnrollIndexLoop<validate>(coord, cdim-1, gsize) )
     : internal::IndexValidator<validate>::validate(IndexT(coord[cdim]), gsize);
 }
@@ -167,7 +163,7 @@ UnrollIndexLoop(const ndIndexT& coord,
                 IndexT          cdim,
                 SizeT           gsize){
   return (cdim != 0)
-    ? ( internal::IndexValidator<validate>::validate(IndexT(offset[cdim]+std::floor(coord[cdim])), gsize)*POW(gsize, cdim) +
+    ? ( internal::IndexValidator<validate>::validate(IndexT(offset[cdim]+std::floor(coord[cdim])), gsize)*Pow(gsize, cdim) +
         UnrollIndexLoop<validate>(coord, offset, cdim-1, gsize) )
     : internal::IndexValidator<validate>::validate(IndexT(offset[cdim]+std::floor(coord[cdim])), gsize);
 }

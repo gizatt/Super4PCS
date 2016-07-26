@@ -51,7 +51,7 @@
 #include "Eigen/Core"
 
 
-namespace match_4pcs {
+namespace FastRegistration {
 
 namespace internal{
 inline void RGB2HSV(float r, float g, float b,
@@ -137,7 +137,18 @@ class Point3D : public cv::Point3f {
 // Largest Common Pointset (LCP), normalized to the size of P thus lies in
 // [0,1] (See the paper for details).
 
-const float kLargeNumber = 1e9;
+const int kNumberOfDiameterTrials = 1000;
+
+// Holds a base from P. The base contains 4 points (indices) from the set P.
+struct Quadrilateral {
+  int vertices[4];
+  Quadrilateral(int vertex0, int vertex1, int vertex2, int vertex3) {
+    vertices[0] = vertex0;
+    vertices[1] = vertex1;
+    vertices[2] = vertex2;
+    vertices[3] = vertex3;
+  }
+};
 
 // ----- 4PCS Options -----
 // delta and overlap_estimation are the application parameters. All other
@@ -155,9 +166,9 @@ struct Match4PCSOptions {
   // Maximum normal difference.
   double max_normal_difference = 10.0;
   // Maximum translation distance.
-  double max_translation_distance = kLargeNumber;
+  double max_translation_distance = std::numeric_limits<double>::max();
   // Maximum rotation angle.
-  double max_angle = kLargeNumber;
+  double max_angle = std::numeric_limits<double>::max();
   // Maximum color RGB distance between corresponding vertices.
   double max_color_distance = 100.0;
   // Threshold on the value of the target function (LCP, see the paper).
@@ -196,14 +207,15 @@ class MatchSuper4PCS {
   // @return the computed LCP measure.
   // The method updates the coordinates of the second set, Q, applying
   // the found transformation.
-  float ComputeTransformation(const std::vector<Point3D>& P,
-                              std::vector<Point3D>* Q, cv::Mat* transformation);
+  double
+    ComputeTransformation(const std::vector<Point3D>& P,
+                          std::vector<Point3D>* Q, cv::Mat* transformation);
 
  private:
   std::unique_ptr<MatchSuper4PCSImpl> pimpl_;
 };
 
-} // namespace match_4pcs
+} // namespace fastregistration
 
 
 

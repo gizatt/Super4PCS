@@ -70,7 +70,7 @@
 #define sqr(x) ((x) * (x))
 
 using namespace std;
-using namespace match_4pcs;
+using namespace FastRegistration;
 
 typedef double Scalar;
 enum {Dim = 3};

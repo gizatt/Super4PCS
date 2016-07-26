@@ -63,7 +63,8 @@ class IndexedNormalHealSet{
 public:
     typedef Eigen::Vector3d Point;
     typedef Eigen::Vector3i Index3D;
-  typedef std::vector<std::vector<unsigned int>> ChealMap;
+    typedef double Scalar;
+    typedef std::vector<std::vector<unsigned int>> ChealMap;
 
 #ifdef DEBUG
 #define VALIDATE_INDICES true
@@ -78,7 +79,7 @@ public:
 #undef VALIDATE_INDICES
   
 private:
-  double _epsilon;
+  Scalar _epsilon;
   int _resolution;
   int _egSize;    //! <\brief Size of the euclidean grid for each dimension
   long _ngLength;  //! ,\brief Length of the normal map from healpix
@@ -110,7 +111,7 @@ private:
   
   
 public:
-  inline IndexedNormalHealSet(double epsilon, int resolution = 4)
+  inline IndexedNormalHealSet(Scalar epsilon, int resolution = 4)
   : _epsilon(epsilon), _resolution(resolution) {
     // We need to check if epsilon is a power of two and correct it if needed
     const int gridDepth = -std::log2(epsilon);
@@ -141,7 +142,14 @@ public:
   inline bool addElement(const otherPoint& pos,
                          const otherPoint& normal,
                          unsigned int id){
-      return addElement(pos.template cast<double>(), normal.template cast<double>(), id);
+      return addElement(pos.template cast<Scalar>(), normal.template cast<Scalar>(), id);
+  }
+
+  template <typename otherPoint1, typename otherPoint2>
+  inline bool addElement(const otherPoint1& pos,
+                         const otherPoint2& normal,
+                         unsigned int id){
+      return addElement(pos.template cast<Scalar>(), normal.template cast<Scalar>(), id);
   }
   
   //! \return NULL if the grid does not exist or p is out of bound
@@ -185,19 +193,48 @@ public:
      return result;
   }
 
-  
+
   //! Get closest points in euclidean space
-  void getNeighbors( const Point& p, 
+  void getNeighbors( const Point& p,
                      std::vector<unsigned int>&nei);
   //! Get closest points in euclidean an normal space
-  void getNeighbors( const Point& p, 
+  void getNeighbors( const Point& p,
                      const Point& n,
                      std::vector<unsigned int>&nei);
   //! Get closest poitns in euclidean an normal space with angular deviation
   void getNeighbors( const Point& p,
                      const Point& n,
-                     double alpha,
+                     Scalar alpha,
                      std::vector<unsigned int>&nei);
+
+  //! Get closest points in euclidean space
+  template <typename otherPoint1>
+  inline void getNeighbors( const otherPoint1& p,
+                            std::vector<unsigned int>&nei){
+      return getNeighbors(p.template cast<Scalar>(), nei);
+  }
+
+  //! Get closest points in euclidean an normal space
+  template <typename otherPoint1, typename otherPoint2>
+  inline void getNeighbors( const otherPoint1& p,
+                            const otherPoint2& n,
+                     std::vector<unsigned int>&nei){
+      return getNeighbors(p.template cast<Scalar>(),
+                          n.template cast<Scalar>(),
+                          nei);
+  }
+
+  //! Get closest poitns in euclidean an normal space with angular deviation
+  template <typename otherPoint1, typename otherPoint2>
+  inline void getNeighbors( const otherPoint1& p,
+                            const otherPoint2& n,
+                            Scalar alpha,
+                            std::vector<unsigned int>&nei){
+      return getNeighbors(p.template cast<Scalar>(),
+                          n.template cast<Scalar>(),
+                          alpha,
+                          nei);
+  }
 
   inline bool isValid() const {
 	  return _egSize > 0;

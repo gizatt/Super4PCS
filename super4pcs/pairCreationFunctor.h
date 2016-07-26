@@ -9,7 +9,7 @@ template <typename _Scalar>
 struct PairCreationFunctor{
 
 private:
-  using Point3D = match_4pcs::Point3D;
+  using Point3D = FastRegistration::Point3D;
 
 public:
   using Scalar      = _Scalar;
@@ -22,7 +22,7 @@ public:
   double pair_distance_epsilon;
 
   // Shared data
-  match_4pcs::Match4PCSOptions options_;
+  FastRegistration::Match4PCSOptions options_;
   const std::vector<Point3D>& Q_;
 
   PairsVector* pairs;
@@ -49,7 +49,7 @@ private:
 
 public:
   inline PairCreationFunctor(
-    match_4pcs::Match4PCSOptions options,
+    FastRegistration::Match4PCSOptions options,
     const std::vector<Point3D>& Q)
     :options_(options), Q_(Q),
      pairs(NULL), _ratio(1.f)

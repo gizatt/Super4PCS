@@ -69,7 +69,7 @@ template <
   >
 struct IndexedNormalSet{
   typedef std::array< std::vector<unsigned int>, 
-                      Utils::POW(_ngSize, dim)> AngularGrid;
+                      FastRegistration::Utils::Pow(_ngSize, dim)> AngularGrid;
                       
   enum MOVE_DIR { POSITIVE, NEGATIVE };
 

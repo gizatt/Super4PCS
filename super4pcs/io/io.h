@@ -33,7 +33,7 @@ struct tripple {
 
 
 using namespace std;
-using namespace match_4pcs;
+using namespace FastRegistration;
 
 class IOManager{
 public:

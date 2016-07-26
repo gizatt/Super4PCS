@@ -162,6 +162,8 @@ IntersectionFunctor<Primitive, Point, dim, Scalar>::process(
     for(typename NodeContainer::iterator nit  = nodes->begin(); 
                                                nit != nodes->end(); nit++){
       Node &n = *nit; 
+
+      // \TODO replace begin by node.start : avoid using sphere we know are out
       
       // Check if the current node intersect one of the primitives
       // In this case, subdivide, store new nodes and stop the loop
@@ -189,6 +191,8 @@ IntersectionFunctor<Primitive, Point, dim, Scalar>::process(
   ResContainer results;
   results.reserve(childNodes->size());  
   
+
+  // \TODO Invert loops, and use node.start (better cache coherence)
   unsigned int pId = 0;
   for(typename PrimitiveContainer::const_iterator itP = M.begin();
       itP != M.end(); itP++, pId++){

@@ -19,6 +19,7 @@ set (Super4PCS_VERSION_MINOR 1)
 
 # Set option to enable timing recording
 set (ENABLE_TIMING 0)
+set (SUPER4PCS_BUILD_TEST 1)
 
  
 # add the binary tree to the search path for include files
@@ -120,7 +121,7 @@ ENDIF(DEFINED ANN_DIR)
 ## Tests
 ################################################################################
 
-if(DEFINED ${SUPER4PCS_BUILD_TEST})
+if(${SUPER4PCS_BUILD_TEST})
 	include(cmake/ConfigureTesting.cmake)
 	add_subdirectory(tests EXCLUDE_FROM_ALL)
 endif(DEFINED ${SUPER4PCS_BUILD_TEST})
@@ -139,12 +140,19 @@ set(Super4PCS_INCLUDE
     ${SRC_DIR}/pairExtraction.h
     ${SRC_DIR}/4pcs.h
     ${SRC_DIR}/pairCreationFunctor.h
+    ${SRC_DIR}/sampling.h
+    ${SRC_DIR}/utils.h
+)
+set(Super4PCS_IMPL
+    ${SRC_DIR}/utils.hpp
 )
 
 add_subdirectory(${SRC_DIR}/io)
 add_subdirectory(${SRC_DIR}/accelerators)
 
-add_library(super4pcs_algo  ${Super4PCS_SRC} ${Super4PCS_INCLUDE})
+add_library(super4pcs_algo ${Super4PCS_SRC}
+                           ${Super4PCS_INCLUDE}
+                           ${Super4PCS_IMPL})
  
 # add the executable
 add_executable(${PROJECT_NAME} ${SRC_DIR}/super4pcs_test.cc)

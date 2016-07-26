@@ -196,7 +196,7 @@ NdNode< Point, _dim, Scalar, _PointContainer, _IdContainer>::split(
   typedef std::vector< Node > Container;
 
   //! Compute number of childs at compile time
-  const int nbNode = Utils::POW(int(2),int(Dim));
+  const int nbNode = FastRegistration::Utils::Pow(int(2),int(Dim));
   const int offset = childs.size();
 
   // init all potential nodes using the root values
@@ -205,7 +205,7 @@ NdNode< Point, _dim, Scalar, _PointContainer, _IdContainer>::split(
   /// Split successively along all the dimensions of the ambiant space
   /// This algorithm cannot be parallelized
   for(unsigned int d = 0; d < Dim; d++){
-    const unsigned int nbInterval   = Utils::POW(int(2),int(d+1)); // can be deduced at
+    const unsigned int nbInterval   = FastRegistration::Utils::Pow(int(2),int(d+1)); // can be deduced at
     const unsigned int nbSplit      = nbInterval/2;         // compile time with
     const unsigned int intervalNode = nbNode / nbSplit;     // loop unrollement
     const unsigned int midNode      = nbNode / nbInterval;

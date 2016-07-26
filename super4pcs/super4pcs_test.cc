@@ -12,7 +12,7 @@
 #define sqr(x) ((x) * (x))
 
 using namespace std;
-using namespace match_4pcs;
+using namespace FastRegistration;
 
 // First input.
 std::string input1 = "input1.obj";

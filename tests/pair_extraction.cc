@@ -71,7 +71,7 @@
 //#include "normalset.h"
 //#include "normalHealSet.h"
 
-using namespace match_4pcs;
+using namespace FastRegistration;
 
 namespace Utilities{
 

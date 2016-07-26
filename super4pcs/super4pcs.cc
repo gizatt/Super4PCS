@@ -60,6 +60,8 @@
 #include "accelerators/normalHealSet.h"
 #include "accelerators/kdtree.h"
 #include "accelerators/bbox.h"
+#include "sampling.h"
+#include "utils.h"
 
 #include "pairCreationFunctor.h"
 
@@ -76,171 +78,15 @@
 
 //#define MULTISCALE
 
-namespace match_4pcs {
+namespace FastRegistration {
 
 using namespace std;
 
-namespace {
-
-/*!
- * \brief Class used to subsample a point cloud using hashing functions
- * \todo Extract to Utilities namespace
- */
-class HashTable {
- private:
-  const uint64 MAGIC1 = 100000007;
-  const uint64 MAGIC2 = 161803409;
-  const uint64 MAGIC3 = 423606823;
-  const uint64 NO_DATA = 0xffffffffu;
-  float voxel_;
-  float scale_;
-  vector<vector<int>> voxels_;
-  vector<uint64> data_;
-
- public:
-  HashTable(int maxpoints, float voxel) : voxel_(voxel), scale_(1.0f / voxel) {
-    uint64 n = maxpoints;
-    voxels_.resize(n);
-    data_.resize(n, NO_DATA);
-  }
-  uint64& operator[](const Point3D& p) {
-    vector<int> c(3);
-    c[0] = static_cast<int>(floor(p.x * scale_));
-    c[1] = static_cast<int>(floor(p.y * scale_));
-    c[2] = static_cast<int>(floor(p.z * scale_));
-    uint64 key = (MAGIC1 * c[0] + MAGIC2 * c[1] + MAGIC3 * c[2]) % data_.size();
-    while (1) {
-      if (data_[key] == NO_DATA) {
-        voxels_[key] = c;
-        break;
-      } else if (voxels_[key] == c) {
-        break;
-      }
-      key++;
-      if (key == data_.size()) key = 0;
-    }
-    return data_[key];
-  }
-};
-
-const int kNumberOfDiameterTrials = 1000;
-
-// Local static helpers that do not depend on state.
-
-inline float Square(float x) { return x * x; }
-
-void DistUniformSampling(const std::vector<Point3D>& set, float delta,
-                         std::vector<Point3D>* sample) {
-  int num_input = set.size();
-  sample->clear();
-  HashTable hash(num_input, delta);
-  for (int i = 0; i < num_input; i++) {
-    uint64& ind = hash[set[i]];
-    if (ind >= num_input) {
-      sample->push_back(set[i]);
-      ind = sample->size();
-    }
-  }
-}
-
-inline float PointsDistance(const Point3D& p, const Point3D& q) {
-  return cv::norm(p - q);
-}
-
-// Compute the closest points between two 3D line segments and obtain the two
-// invariants corresponding to the closet points. This is the "intersection"
-// point that determines the invariants. Since the 4 points are not exactly
-// planar, we use the center of the line segment connecting the two closest
-// points as the "intersection".
-float distSegmentToSegment(const cv::Point3f& p1, const cv::Point3f& p2,
-                           const cv::Point3f& q1, const cv::Point3f& q2,
-                           double* invariant1, double* invariant2) {
-  if (invariant1 == 0 || invariant2 == 0) return kLargeNumber;
-  const float kSmallNumber = 0.0001;
-  cv::Point3f u = p2 - p1;
-  cv::Point3f v = q2 - q1;
-  cv::Point3f w = p1 - q1;
-  float a = u.dot(u);
-  float b = u.dot(v);
-  float c = v.dot(v);
-  float d = u.dot(w);
-  float e = v.dot(w);
-  float f = a * c - b * b;
-  // s1,s2 and t1,t2 are the parametric representation of the intersection.
-  // they will be the invariants at the end of this simple computation.
-  float s1 = 0.0;
-  float s2 = f;
-  float t1 = 0.0;
-  float t2 = f;
-
-  if (f < kSmallNumber) {
-    s1 = 0.0;
-    s2 = 1.0;
-    t1 = e;
-    t2 = c;
-  } else {
-    s1 = (b * e - c * d);
-    t1 = (a * e - b * d);
-    if (s1 < 0.0) {
-      s1 = 0.0;
-      t1 = e;
-      t2 = c;
-    } else if (s1 > s2) {
-      s1 = s2;
-      t1 = e + b;
-      t2 = c;
-    }
-  }
-
-  if (t1 < 0.0) {
-    t1 = 0.0;
-    if (-d < 0.0)
-      s1 = 0.0;
-    else if (-d > a)
-      s1 = s2;
-    else {
-      s1 = -d;
-      s2 = a;
-    }
-  } else if (t1 > t2) {
-    t1 = t2;
-    if ((-d + b) < 0.0)
-      s1 = 0;
-    else if ((-d + b) > a)
-      s1 = s2;
-    else {
-      s1 = (-d + b);
-      s2 = a;
-    }
-  }
-  *invariant1 = (abs(s1) < kSmallNumber ? 0.0 : s1 / s2);
-  *invariant2 = (abs(t1) < kSmallNumber ? 0.0 : t1 / t2);
-  cv::Point3f distance = w + (*invariant1 * u) - (*invariant2 * v);
-  return cv::norm(distance);
-}
-
-}  // namespace
-
-// Holds a base from P. The base contains 4 points (indices) from the set P.
-struct Quadrilateral {
-  int vertices[4];
-  Quadrilateral(int vertex0, int vertex1, int vertex2, int vertex3) {
-    vertices[0] = vertex0;
-    vertices[1] = vertex1;
-    vertices[2] = vertex2;
-    vertices[3] = vertex3;
-//    cout << vertex0 << " "
-//         << vertex1 << " "
-//         << vertex2 << " "
-//         << vertex3 << " "
-//         << (float(vertex0) + float(vertex1) + float(vertex2) + float(vertex3))/4.f
-//         << endl;
-  }
-};
-
 class MatchSuper4PCSImpl {
-
+public:
     typedef double Scalar;
+
+private:
     typedef PairCreationFunctor<Scalar>::PairsVector PairsVector;
 
 #ifdef TEST_GLOBAL_TIMINGS
@@ -280,7 +126,7 @@ class MatchSuper4PCSImpl {
   // @return the computed LCP measure.
   // The method updates the coordinates of the second set, Q, applying
   // the found transformation.
-  float ComputeTransformation(const std::vector<Point3D>& P,
+  Scalar ComputeTransformation(const std::vector<Point3D>& P,
                               std::vector<Point3D>* Q, cv::Mat* transformation);
 
  private:
@@ -296,14 +142,14 @@ class MatchSuper4PCSImpl {
   // P and the estimated overlap and used to limit the distance between the
   // points in the base in P so that the probability to have all points in
   // the base as inliers is increased.
-  float max_base_diameter_;
+  Scalar max_base_diameter_;
   // The diameter of P.
-  float P_diameter_;
+  Scalar P_diameter_;
   // KdTree used to compute the LCP
   Super4PCS::KdTree<Scalar> kd_tree_;
   // Mean distance between points and their nearest neighbor in the set P.
   // Used to normalize the "delta" which is given in terms of this distance.
-  float P_mean_distance_;
+  Scalar P_mean_distance_;
   // The transformation matrix by wich we transform Q to P
   Eigen::Matrix<Scalar, 4, 4> transform_;
   // Quad centroids in first and second clouds
@@ -332,7 +178,7 @@ class MatchSuper4PCSImpl {
   // The centroid of Q.
   cv::Point3f centroid_Q_;
   // The best LCP (Largest Common Point) fraction so far.
-  float best_LCP_;
+  Scalar best_LCP_;
   // Current trial.
   int current_trial_;
   // Parameters.
@@ -361,8 +207,8 @@ class MatchSuper4PCSImpl {
   // @param [out] pairs A set of pairs in Q that match the pair in P with
   // respect to distance and normals, up to the given tolerance.
   void
-  ExtractPairs(double pair_distance, double pair_normals_angle,
-                       double pair_distance_epsilon, int base_point1,
+  ExtractPairs(Scalar pair_distance, Scalar pair_normals_angle,
+                       Scalar pair_distance_epsilon, int base_point1,
                        int base_point2,
                        PairsVector* pairs);
 
@@ -373,25 +219,7 @@ class MatchSuper4PCSImpl {
   Scalar Verify(const Eigen::Matrix<Scalar, 4, 4>& mat);
 
   // Computes the mean distance between point in Q and its nearest neighbor.
-  double MeanDistance();
-
-  // Selects a quadrilateral from P and returns the corresponding invariants
-  // and point indices. Returns true if a quadrilateral has been found, false
-  // otherwise.
-  bool SelectQuadrilateral(double* invariant1, double* invariant2, int* base1,
-                           int* base2, int* base3, int* base4);
-
-  // Select random triangle in P such that its diameter is close to
-  // max_base_diameter_. This enables to increase the probability of having
-  // all three points in the inlier set. Return true on success, false if such a
-  // triangle cannot be found.
-  bool SelectRandomTriangle(int* base1, int* base2, int* base3);
-
-  // Takes quadrilateral as a base, computes robust intersection point
-  // (approximate as the lines might not intersect) and returns the invariants
-  // corresponding to the two selected lines. The method also updates the order
-  // of the base base_3D_.
-  bool TryQuadrilateral(double* invariant1, double* invariant2, int &base1, int &base2, int &base3, int &base4);
+  Scalar MeanDistance();
 
   // Finds congruent candidates in the set Q, given the invariants and threshold
   // distances. Returns true if a non empty set can be found, false otherwise.
@@ -408,9 +236,9 @@ class MatchSuper4PCSImpl {
   // @param [in] Q_pointsSecond Point coordinates for the pairs second id
   // @param [out] quadrilaterals The set of congruent quadrilateral. In fact,
   // it's a super set from which we extract the real congruent set.
-  bool FindCongruentQuadrilateralsFast(double invariant1, double invariant2,
-                                       double distance_threshold1,
-                                       double distance_threshold2,
+  bool FindCongruentQuadrilateralsFast(Scalar invariant1, Scalar invariant2,
+                                       Scalar distance_threshold1,
+                                       Scalar distance_threshold2,
                                        const PairsVector& P_pairs,
                                        const PairsVector& Q_pairs,
                                        const std::vector<Point3D>& Q_points,
@@ -451,8 +279,8 @@ class MatchSuper4PCSImpl {
 // Finds congruent candidates in the set Q, given the invariants and threshold
 // distances.
 bool MatchSuper4PCSImpl::FindCongruentQuadrilateralsFast(
-    double invariant1, double invariant2, double distance_threshold1,
-    double distance_threshold2, const std::vector<std::pair<int, int>>& P_pairs,
+    Scalar invariant1, Scalar invariant2, Scalar distance_threshold1,
+    Scalar distance_threshold2, const std::vector<std::pair<int, int>>& P_pairs,
     const std::vector<std::pair<int, int>>& Q_pairs,
     const std::vector<Point3D>& Q_points,
     std::vector<Quadrilateral>* quadrilaterals) {
@@ -460,7 +288,7 @@ bool MatchSuper4PCSImpl::FindCongruentQuadrilateralsFast(
   // Compute the angle formed by the two vectors of the basis
   Point3D b1 = base_3D_[1] - base_3D_[0];  b1.normalize();
   Point3D b2 = base_3D_[3] - base_3D_[2];  b2.normalize();
-  double alpha = /*std::abs(*/b1.dot(b2)/*)*/;
+  Scalar alpha = /*std::abs(*/b1.dot(b2)/*)*/;
 
   // 1. Datastructure construction
   typedef PairCreationFunctor<Scalar>::Point Point;
@@ -482,7 +310,7 @@ bool MatchSuper4PCSImpl::FindCongruentQuadrilateralsFast(
   for (unsigned int i = 0; i < P_pairs.size(); ++i) {
     const Point& p1 = pcfunctor_.points[P_pairs[i].first];
     const Point& p2 = pcfunctor_.points[P_pairs[i].second];
-    Point  n  = (p2 - p1).normalized();
+    Point  n  = (p2 - p1);
 
 //    cout << "new entry: " << endl
 //         << p1.transpose() << "(" << P_pairs[i].first  << ")" << endl
@@ -490,7 +318,7 @@ bool MatchSuper4PCSImpl::FindCongruentQuadrilateralsFast(
 //         << (p1+ invariant1       * (p2 - p1)).transpose() << endl
 //         << n.transpose() << endl;
 
-    nset.addElement( p1+ invariant1 * (p2 - p1),  n, i);
+    nset.addElement( p1 + invariant1 * n,  n.normalized(), i);
   }
 
 
@@ -505,13 +333,9 @@ bool MatchSuper4PCSImpl::FindCongruentQuadrilateralsFast(
 
     const Point3D& pq1 = Q_points[Q_pairs[i].first];
     const Point3D& pq2 = Q_points[Q_pairs[i].second];
+    Point n = p2 - p1;
 
     nei.clear();
-
-    Point   query  =  p1 + invariant2 * ( p2 - p1 );
-    Point3D queryQ = pq1 + invariant2 * (pq2 - pq1);
-
-    Point queryn = (p2 - p1).normalized();
 
 //    cout << "query: " << endl
 //         << p1.transpose() << "(" << Q_pairs[i].first  << ")" << endl
@@ -519,22 +343,25 @@ bool MatchSuper4PCSImpl::FindCongruentQuadrilateralsFast(
 //         << query.transpose() << endl
 //         << queryn.transpose() << endl;
 
-    nset.getNeighbors( query,  queryn, alpha, nei);
+    nset.getNeighbors( p1 + invariant2 * n,  n.normalized(), alpha, nei);
 
+    if (! nei.empty()){
+      Point3D queryQ = pq1 + invariant2 * (pq2 - pq1);
 
-    Point3D invPoint;
-    //const float distance_threshold2s = distance_threshold2 * distance_threshold2;
-    for (unsigned int k = 0; k != nei.size(); k++){
-      int id = nei[k];
+      Point3D invPoint;
+      //const Scalar distance_threshold2s = distance_threshold2 * distance_threshold2;
+      for (unsigned int k = 0; k != nei.size(); k++){
+        int id = nei[k];
 
-      const Point3D& pp1 = Q_points[P_pairs[id].first];
-      const Point3D& pp2 = Q_points[P_pairs[id].second];
+        const Point3D& pp1 = Q_points[P_pairs[id].first];
+        const Point3D& pp2 = Q_points[P_pairs[id].second];
 
-      invPoint = pp1 + (pp2 - pp1) * invariant1;
+        invPoint = pp1 + (pp2 - pp1) * invariant1;
 
-       // use also distance_threshold2 for inv 1 and 2 in 4PCS
-      if (cv::norm(queryQ-invPoint) <= distance_threshold2){
-          comb.insert(std::pair<unsigned int, unsigned int>(id, i));
+         // use also distance_threshold2 for inv 1 and 2 in 4PCS
+        if (cv::norm(queryQ-invPoint) <= distance_threshold2){
+            comb.insert(std::pair<unsigned int, unsigned int>(id, i));
+        }
       }
     }
   }
@@ -553,181 +380,12 @@ bool MatchSuper4PCSImpl::FindCongruentQuadrilateralsFast(
   return quadrilaterals->size() != 0;
 }
 
-// Try the current base in P and obtain the best pairing, i.e. the one that
-// gives the smaller distance between the two closest points. The invariants
-// corresponding the the base pairing are computed.
-bool MatchSuper4PCSImpl::TryQuadrilateral(double* invariant1, double* invariant2,
-                                          int& id1, int& id2, int& id3, int& id4) {
-  if (invariant1 == NULL || invariant2 == NULL) return false;
-
-  float min_distance = FLT_MAX;
-  int best1, best2, best3, best4;
-  for (int i = 0; i < 4; ++i) {
-    for (int j = 0; j < 4; ++j) {
-      if (i == j) continue;
-      int k = 0;
-      while (k == i || k == j) k++;
-      int l = 0;
-      while (l == i || l == j || l == k) l++;
-      double local_invariant1;
-      double local_invariant2;
-      // Compute the closest points on both segments, the corresponding
-      // invariants and the distance between the closest points.
-      float segment_distance = distSegmentToSegment(
-          base_3D_[i], base_3D_[j], base_3D_[k], base_3D_[l], &local_invariant1,
-          &local_invariant2);
-      // Retail the smallest distance and the best order so far.
-      if (segment_distance < min_distance) {
-        min_distance = segment_distance;
-        best1 = i;
-        best2 = j;
-        best3 = k;
-        best4 = l;
-        *invariant1 = local_invariant1;
-        *invariant2 = local_invariant2;
-      }
-    }
-  }
-  vector<Point3D> tmp = base_3D_;
-  base_3D_[0] = tmp[best1];
-  base_3D_[1] = tmp[best2];
-  base_3D_[2] = tmp[best3];
-  base_3D_[3] = tmp[best4];
-
-  std::array<int, 4> tmpId = {id1, id2, id3, id4};
-  id1 = tmpId[best1];
-  id2 = tmpId[best2];
-  id3 = tmpId[best3];
-  id4 = tmpId[best4];
-
-  return true;
-}
-
-// Selects a random triangle in the set P (then we add another point to keep the
-// base as planar as possible). We apply a simple heuristic that works in most
-// practical cases. The idea is to accept maximum distance, computed by the
-// estimated overlap, multiplied by the diameter of P, and try to have
-// a triangle with all three edges close to this distance. Wide triangles helps
-// to make the transformation robust while too large triangles makes the
-// probability of having all points in the inliers small so we try to trade-off.
-bool MatchSuper4PCSImpl::SelectRandomTriangle(int* base1, int* base2, int* base3) {
-  if (base1 == NULL || base2 == NULL || base3 == NULL) return false;
-  
-  int number_of_points = sampled_P_3D_.size();
-  *base1 = *base2 = *base3 = -1;
-
-  // Pick the first point at random.
-  int first_point = rand() % number_of_points;
-
-  // Try fixed number of times retaining the best other two.
-  float best_wide = 0.0;
-  for (int i = 0; i < kNumberOfDiameterTrials; ++i) {
-    // Pick and compute
-    int second_point = rand() % number_of_points;
-    int third_point = rand() % number_of_points;
-    cv::Point3f u = sampled_P_3D_[second_point] - sampled_P_3D_[first_point];
-    cv::Point3f w = sampled_P_3D_[third_point] - sampled_P_3D_[first_point];
-    // We try to have wide triangles but still not too large.
-    float how_wide = cv::norm(u.cross(w));
-    if (how_wide > best_wide && cv::norm(u) < max_base_diameter_ &&
-        cv::norm(w) < max_base_diameter_) {
-      best_wide = how_wide;
-      *base1 = first_point;
-      *base2 = second_point;
-      *base3 = third_point;
-    }
-  }
-  if (*base1 == -1 || *base2 == -1 || *base3 == -1)
-    return false;
-  else
-    return true;
-}
-
-// Selects a good base from P and computes its invariants. Returns false if
-// a good planar base cannot can be found.
-bool MatchSuper4PCSImpl::SelectQuadrilateral(double* invariant1, double* invariant2,
-                                        int* base1, int* base2, int* base3,
-                                        int* base4) {
-  if (invariant1 == NULL || invariant2 == NULL || base1 == NULL ||
-      base2 == NULL || base3 == NULL || base4 == NULL)
-    return false;
-
-  const float kBaseTooSmall = 0.2;
-  int current_trial = 0;
-
-  // Try fix number of times.
-  while (current_trial < kNumberOfDiameterTrials) {
-    // Select a triangle if possible. otherwise fail.
-    if (!SelectRandomTriangle(base1, base2, base3)){
-      return false;
-    }
-
-    base_3D_[0] = sampled_P_3D_[*base1];
-    base_3D_[1] = sampled_P_3D_[*base2];
-    base_3D_[2] = sampled_P_3D_[*base3];
-
-    // The 4th point will be a one that is close to be planar to the other 3
-    // while still not too close to them.
-    const double& x1 = base_3D_[0].x;
-    const double& y1 = base_3D_[0].y;
-    const double& z1 = base_3D_[0].z;
-    const double& x2 = base_3D_[1].x;
-    const double& y2 = base_3D_[1].y;
-    const double& z2 = base_3D_[1].z;
-    const double& x3 = base_3D_[2].x;
-    const double& y3 = base_3D_[2].y;
-    const double& z3 = base_3D_[2].z;
-
-    // Fit a plan.
-    double denom = (-x3 * y2 * z1 + x2 * y3 * z1 + x3 * y1 * z2 - x1 * y3 * z2 -
-                    x2 * y1 * z3 + x1 * y2 * z3);
-
-    if (denom != 0) {
-      double A =
-          (-y2 * z1 + y3 * z1 + y1 * z2 - y3 * z2 - y1 * z3 + y2 * z3) / denom;
-      double B =
-          (x2 * z1 - x3 * z1 - x1 * z2 + x3 * z2 + x1 * z3 - x2 * z3) / denom;
-      double C =
-          (-x2 * y1 + x3 * y1 + x1 * y2 - x3 * y2 - x1 * y3 + x2 * y3) / denom;
-      *base4 = -1;
-      double best_distance = FLT_MAX;
-      // Go over all points in P.
-      for (unsigned int i = 0; i < sampled_P_3D_.size(); ++i) {
-        double d1 = PointsDistance(sampled_P_3D_[i], sampled_P_3D_[*base1]);
-        double d2 = PointsDistance(sampled_P_3D_[i], sampled_P_3D_[*base2]);
-        double d3 = PointsDistance(sampled_P_3D_[i], sampled_P_3D_[*base3]);
-        float too_small = max_base_diameter_ * kBaseTooSmall;
-        if (d1 >= too_small && d2 >= too_small && d3 >= too_small) {
-          // Not too close to any of the first 3.
-          double distance =
-              std::abs(A * sampled_P_3D_[i].x + B * sampled_P_3D_[i].y +
-                   C * sampled_P_3D_[i].z - 1.0);
-          // Search for the most planar.
-          if (distance < best_distance) {
-            best_distance = distance;
-            *base4 = int(i);
-          }
-        }
-      }
-      // If we have a good one we can quit.
-      if (*base4 != -1) {
-        base_3D_[3] = sampled_P_3D_[*base4];
-        TryQuadrilateral(invariant1, invariant2, *base1, *base2, *base3, *base4);
-        return true;
-      }
-    }
-    current_trial++;
-  }
-  
-  // We failed to find good enough base..
-  return false;
-}
 
 // Computes the mean distance between points in Q and their nearest neighbor.
 // We need this for normalization of the user delta (See the paper) to the
 // "scale" of the set.
-double MatchSuper4PCSImpl::MeanDistance() {
-  const float kDiameterFraction = 0.2;
+MatchSuper4PCSImpl::Scalar MatchSuper4PCSImpl::MeanDistance() {
+  const Scalar kDiameterFraction = 0.2;
   Super4PCS::KdTree<Scalar>::VectorType query_point;
 
   int number_of_samples = 0;
@@ -760,7 +418,7 @@ MatchSuper4PCSImpl::Verify(const Eigen::Matrix<Scalar, 4, 4>& mat) {
 #endif
 
   // We allow factor 2 scaling in the normalization.
-  float epsilon = options_.delta;
+  Scalar epsilon = options_.delta;
   int good_points = 0;
   int number_of_points = pcfunctor_.points.size();
   int terminate_value = best_LCP_ * number_of_points;
@@ -807,16 +465,16 @@ MatchSuper4PCSImpl::Verify(const Eigen::Matrix<Scalar, 4, 4>& mat) {
 #ifdef TEST_GLOBAL_TIMINGS
   verifyTime += Scalar(t_verify.elapsed().count()) / Scalar(CLOCKS_PER_SEC);
 #endif
-  return static_cast<float>(good_points) / number_of_points;
+  return static_cast<Scalar>(good_points) / number_of_points;
 }
 
 // Constructs two sets of pairs in Q, each corresponds to one pair in the base
 // in P, by having the same distance (up to some tolerantz) and optionally the
 // same angle between normals and same color.
 void
-MatchSuper4PCSImpl::ExtractPairs(double pair_distance,
-                                    double pair_normals_angle,
-                                    double pair_distance_epsilon,
+MatchSuper4PCSImpl::ExtractPairs(Scalar pair_distance,
+                                    Scalar pair_normals_angle,
+                                    Scalar pair_distance_epsilon,
                                     int base_point1, int base_point2,
                                     PairsVector* pairs) {
 
@@ -860,9 +518,9 @@ MatchSuper4PCSImpl::ExtractPairs(double pair_distance,
 // a complete RANSAC iteration.
 bool MatchSuper4PCSImpl::TryOneBase() {
   vector<pair<Point3D, Point3D>> congruent_points(4);
-  double invariant1, invariant2;
+  Scalar invariant1, invariant2;
   int base_id1, base_id2, base_id3, base_id4;
-  float distance_factor = 2.0;
+  Scalar distance_factor = 2.0;
 
 //#define STATIC_BASE
 
@@ -880,7 +538,7 @@ bool MatchSuper4PCSImpl::TryOneBase() {
       base_3D_[2] = sampled_P_3D_ [base_id3];
       base_3D_[3] = sampled_P_3D_ [base_id4];
 
-      TryQuadrilateral(&invariant1, &invariant2, base_id1, base_id2, base_id3, base_id4);
+      Utils::TryQuadrilateral(invariant1, invariant2, base_id1, base_id2, base_id3, base_id4, base_3D_);
 
       first_time = false;
   }
@@ -889,15 +547,20 @@ bool MatchSuper4PCSImpl::TryOneBase() {
 
 #else
 
-  if (!SelectQuadrilateral(&invariant1, &invariant2, &base_id1, &base_id2,
-                           &base_id3, &base_id4)) {
+  if (!Utils::SelectQuadrilateral(
+              invariant1, invariant2,
+              base_id1, base_id2, base_id3, base_id4,
+              base_3D_, sampled_P_3D_, max_base_diameter_,
+              kNumberOfDiameterTrials)) {
     return false;
   }
 #endif
 
   // Computes distance between pairs.
-  double distance1 = PointsDistance(base_3D_[0], base_3D_[1]);
-  double distance2 = PointsDistance(base_3D_[2], base_3D_[3]);
+  Scalar distance1 = cv::norm(base_3D_[0] - base_3D_[1]);
+  Scalar distance2 = cv::norm(base_3D_[2] - base_3D_[3]);
+
+  std::cout << "distances: " << distance1 << " " << distance2 << std::endl;
 
   vector<pair<int, int>> pairs1, pairs2;
   vector<Quadrilateral> congruent_quads;
@@ -910,6 +573,8 @@ bool MatchSuper4PCSImpl::TryOneBase() {
                   1, &pairs1);
   ExtractPairs(distance2, normal_angle2, distance_factor * options_.delta, 2,
                   3, &pairs2);
+
+  std::cout << pairs1.size() << " " << pairs2.size() << std::endl;
 
   if (pairs1.size() == 0 || pairs2.size() == 0) {
     return false;
@@ -1040,9 +705,9 @@ struct eqstr {
 void MatchSuper4PCSImpl::Initialize(const std::vector<Point3D>& P,
                                const std::vector<Point3D>& Q) {
 
-  const float kSmallError = 0.00001;
+  const Scalar kSmallError = 0.00001;
   const int kMinNumberOfTrials = 4;
-  const float kDiameterFraction = 0.3;
+  const Scalar kDiameterFraction = 0.3;
 
   centroid_P_.x = 0;
   centroid_P_.y = 0;
@@ -1064,7 +729,7 @@ void MatchSuper4PCSImpl::Initialize(const std::vector<Point3D>& P,
   // prepare P
   if (P.size() > options_.sample_size){
       std::vector<Point3D> uniform_P;
-      DistUniformSampling(P, options_.delta, &uniform_P);
+      Sampling::DistUniformSampling(P, options_.delta, &uniform_P);
 
       int sample_fraction_P = 1;  // We prefer not to sample P but any number can be
                                   // placed here.
@@ -1087,7 +752,7 @@ void MatchSuper4PCSImpl::Initialize(const std::vector<Point3D>& P,
   // prepare Q
   if (Q.size() > options_.sample_size){
       std::vector<Point3D> uniform_Q;
-      DistUniformSampling(Q, options_.delta, &uniform_Q);
+      Sampling::DistUniformSampling(Q, options_.delta, &uniform_Q);
       int sample_fraction_Q =
           max(1, static_cast<int>(uniform_Q.size() / options_.sample_size));
 
@@ -1179,9 +844,9 @@ void MatchSuper4PCSImpl::Initialize(const std::vector<Point3D>& P,
   max_base_diameter_ = P_diameter_;  // * estimated_overlap_;
 
   // RANSAC probability and number of needed trials.
-  double first_estimation =
+  Scalar first_estimation =
       log(kSmallError) / log(1.0 - pow(options_.overlap_estimation,
-                                       static_cast<float>(kMinNumberOfTrials)));
+                                       static_cast<Scalar>(kMinNumberOfTrials)));
   // We use a simple heuristic to elevate the probability to a reasonable value
   // given that we don't simply sample from P, but instead, we bound the
   // distance between the points in the base as a fraction of the diameter.
@@ -1214,7 +879,7 @@ bool MatchSuper4PCSImpl::ComputeRigidTransformation(const vector< pair<Point3D, 
                                                     Scalar& rms_,
                                                     bool computeScale ) {
 
-  rms_ = kLargeNumber;
+  rms_ = std::numeric_limits<Scalar>::max();
 
   if (pairs.size() == 0 || pairs.size() % 2 != 0)
       return false;
@@ -1247,7 +912,7 @@ bool MatchSuper4PCSImpl::ComputeRigidTransformation(const vector< pair<Point3D, 
       Scalar ratioMean = (ratio1+ratio2)/Scalar(2.);            // mean of the two
 
       if ( ratioDev > Scalar(0.1) )
-          return kLargeNumber;
+          return false;
 
 //      std::cout << ratio1 << " "
 //                << ratio2 << " "
@@ -1264,59 +929,59 @@ bool MatchSuper4PCSImpl::ComputeRigidTransformation(const vector< pair<Point3D, 
   }
 
   cv::Point3f vector_p1 = p1 - p0;
-  if (cv::norm(vector_p1) == 0) return kLargeNumber;
+  if (cv::norm(vector_p1) == 0) return false;
   vector_p1 = vector_p1 * (1.0 / cv::norm(vector_p1));
   cv::Point3f vector_p2 = (p2 - p0) - ((p2 - p0).dot(vector_p1)) * vector_p1;
-  if (cv::norm(vector_p2) == 0) return kLargeNumber;
+  if (cv::norm(vector_p2) == 0) return false;
   vector_p2 = vector_p2 * (1.0 / cv::norm(vector_p2));
   cv::Point3f vector_p3 = vector_p1.cross(vector_p2);
 
   cv::Point3f vector_q1 = q1 - q0;
-  if (cv::norm(vector_q1) == 0) return kLargeNumber;
+  if (cv::norm(vector_q1) == 0) return false;
   vector_q1 = vector_q1 * (1.0 / cv::norm(vector_q1));
   cv::Point3f vector_q2 = (q2 - q0) - ((q2 - q0).dot(vector_q1)) * vector_q1;
-  if (cv::norm(vector_q2) == 0) return kLargeNumber;
+  if (cv::norm(vector_q2) == 0) return false;
   vector_q2 = vector_q2 * (1.0 / cv::norm(vector_q2));
   cv::Point3f vector_q3 = vector_q1.cross(vector_q2);
 
   cv::Mat rotate_p(3, 3, CV_64F);
-  rotate_p.at<double>(0, 0) = vector_p1.x;
-  rotate_p.at<double>(0, 1) = vector_p1.y;
-  rotate_p.at<double>(0, 2) = vector_p1.z;
-  rotate_p.at<double>(1, 0) = vector_p2.x;
-  rotate_p.at<double>(1, 1) = vector_p2.y;
-  rotate_p.at<double>(1, 2) = vector_p2.z;
-  rotate_p.at<double>(2, 0) = vector_p3.x;
-  rotate_p.at<double>(2, 1) = vector_p3.y;
-  rotate_p.at<double>(2, 2) = vector_p3.z;
+  rotate_p.at<Scalar>(0, 0) = vector_p1.x;
+  rotate_p.at<Scalar>(0, 1) = vector_p1.y;
+  rotate_p.at<Scalar>(0, 2) = vector_p1.z;
+  rotate_p.at<Scalar>(1, 0) = vector_p2.x;
+  rotate_p.at<Scalar>(1, 1) = vector_p2.y;
+  rotate_p.at<Scalar>(1, 2) = vector_p2.z;
+  rotate_p.at<Scalar>(2, 0) = vector_p3.x;
+  rotate_p.at<Scalar>(2, 1) = vector_p3.y;
+  rotate_p.at<Scalar>(2, 2) = vector_p3.z;
 
   cv::Mat rotate_q(3, 3, CV_64F);
-  rotate_q.at<double>(0, 0) = vector_q1.x;
-  rotate_q.at<double>(0, 1) = vector_q1.y;
-  rotate_q.at<double>(0, 2) = vector_q1.z;
-  rotate_q.at<double>(1, 0) = vector_q2.x;
-  rotate_q.at<double>(1, 1) = vector_q2.y;
-  rotate_q.at<double>(1, 2) = vector_q2.z;
-  rotate_q.at<double>(2, 0) = vector_q3.x;
-  rotate_q.at<double>(2, 1) = vector_q3.y;
-  rotate_q.at<double>(2, 2) = vector_q3.z;
+  rotate_q.at<Scalar>(0, 0) = vector_q1.x;
+  rotate_q.at<Scalar>(0, 1) = vector_q1.y;
+  rotate_q.at<Scalar>(0, 2) = vector_q1.z;
+  rotate_q.at<Scalar>(1, 0) = vector_q2.x;
+  rotate_q.at<Scalar>(1, 1) = vector_q2.y;
+  rotate_q.at<Scalar>(1, 2) = vector_q2.z;
+  rotate_q.at<Scalar>(2, 0) = vector_q3.x;
+  rotate_q.at<Scalar>(2, 1) = vector_q3.y;
+  rotate_q.at<Scalar>(2, 2) = vector_q3.z;
 
   rotation = rotate_p.t() * rotate_q;
 
   // Discard singular solutions. The rotation should be orthogonal.
   cv::Mat unit = rotation * rotation.t();
-  if (std::abs(unit.at<double>(0, 0) - 1.0) > kSmallNumber ||
-      std::abs(unit.at<double>(1, 1) - 1.0) > kSmallNumber ||
-      std::abs(unit.at<double>(2, 2) - 1.0) > kSmallNumber){
+  if (std::abs(unit.at<Scalar>(0, 0) - 1.0) > kSmallNumber ||
+      std::abs(unit.at<Scalar>(1, 1) - 1.0) > kSmallNumber ||
+      std::abs(unit.at<Scalar>(2, 2) - 1.0) > kSmallNumber){
       return false;
   }
 
   // Discard too large solutions (todo: lazy evaluation during boolean computation
-  float theta_x = std::abs(atan2(rotation.at<double>(2, 1), rotation.at<double>(2, 2)));
-  float theta_y = std::abs(atan2(-rotation.at<double>(2, 0),
-                             sqrt(Square(rotation.at<double>(2, 1)) +
-                                  Square(rotation.at<double>(2, 2)))));
-  float theta_z = std::abs(atan2(rotation.at<double>(1, 0), rotation.at<double>(0, 0)));
+  Scalar theta_x = std::abs(atan2(rotation.at<Scalar>(2, 1), rotation.at<Scalar>(2, 2)));
+  Scalar theta_y = std::abs(atan2(-rotation.at<Scalar>(2, 0),
+                             sqrt(Utils::square(rotation.at<Scalar>(2, 1)) +
+                                  Utils::square(rotation.at<Scalar>(2, 2)))));
+  Scalar theta_z = std::abs(atan2(rotation.at<Scalar>(1, 0), rotation.at<Scalar>(0, 0)));
   if (theta_x > max_angle ||
       theta_y > max_angle ||
       theta_z > max_angle)
@@ -1328,15 +993,15 @@ bool MatchSuper4PCSImpl::ComputeRigidTransformation(const vector< pair<Point3D, 
   {
       cv::Mat first(3, 1, CV_64F), transformed;
       for (int i = 0; i < 3; ++i) {
-          first.at<double>(0, 0) = scaleEst*pairs[i].second.x - centroid2(0);
-          first.at<double>(1, 0) = scaleEst*pairs[i].second.y - centroid2(1);
-          first.at<double>(2, 0) = scaleEst*pairs[i].second.z - centroid2(2);
+          first.at<Scalar>(0, 0) = scaleEst*pairs[i].second.x - centroid2(0);
+          first.at<Scalar>(1, 0) = scaleEst*pairs[i].second.y - centroid2(1);
+          first.at<Scalar>(2, 0) = scaleEst*pairs[i].second.z - centroid2(2);
           transformed = rotation * first;
-          rms_ += sqrt(Square(transformed.at<double>(0, 0) -
+          rms_ += sqrt(Utils::square(transformed.at<Scalar>(0, 0) -
                               (pairs[i].first.x - centroid1(0))) +
-                       Square(transformed.at<double>(1, 0) -
+                       Utils::square(transformed.at<Scalar>(1, 0) -
                               (pairs[i].first.y - centroid1(1))) +
-                       Square(transformed.at<double>(2, 0) -
+                       Utils::square(transformed.at<Scalar>(2, 0) -
                               (pairs[i].first.z - centroid1(2))));
       }
   }
@@ -1374,17 +1039,17 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
     Timer t (true);
 #endif
 
-  float last_best_LCP = best_LCP_;
+  Scalar last_best_LCP = best_LCP_;
   bool ok;
   int64 t0 = clock();
   for (int i = current_trial_; i < current_trial_ + n; ++i) {
     ok = TryOneBase();
 
-    float fraction_try =
-        static_cast<float>(i) / static_cast<float>(number_of_trials_);
-    float fraction_time = static_cast<float>(clock() - t0) / CLOCKS_PER_SEC /
+    Scalar fraction_try =
+        static_cast<Scalar>(i) / static_cast<Scalar>(number_of_trials_);
+    Scalar fraction_time = static_cast<Scalar>(clock() - t0) / CLOCKS_PER_SEC /
                           options_.max_time_seconds;
-    float fraction = max(fraction_time, fraction_try);
+    Scalar fraction = max(fraction_time, fraction_try);
     printf("done: %d%c best: %f                  \r",
            static_cast<int>(fraction * 100), '%', best_LCP_);
     fflush(stdout);
@@ -1401,13 +1066,13 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
     {
         Eigen::Matrix<Scalar, 3,1> centroid_P,centroid_Q;
         cv::Mat first(3, 1, CV_64F);
-        first.at<double>(0, 0) = centroid_P_.x;
-        first.at<double>(1, 0) = centroid_P_.y;
-        first.at<double>(2, 0) = centroid_P_.z;
+        first.at<Scalar>(0, 0) = centroid_P_.x;
+        first.at<Scalar>(1, 0) = centroid_P_.y;
+        first.at<Scalar>(2, 0) = centroid_P_.z;
         cv::cv2eigen(first, centroid_P);
-        first.at<double>(0, 0) = centroid_Q_.x;
-        first.at<double>(1, 0) = centroid_Q_.y;
-        first.at<double>(2, 0) = centroid_Q_.z;
+        first.at<Scalar>(0, 0) = centroid_Q_.x;
+        first.at<Scalar>(1, 0) = centroid_Q_.y;
+        first.at<Scalar>(2, 0) = centroid_Q_.z;
         cv::cv2eigen(first, centroid_Q);
 
         Eigen::Matrix<Scalar, 3, 3> rot, scale;
@@ -1420,14 +1085,14 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
     // Transforms Q by the new transformation.
     for (unsigned int i = 0; i < Q->size(); ++i) {
       cv::Mat first(4, 1, CV_64F), transformed;
-      first.at<double>(0, 0) = (*Q)[i].x;
-      first.at<double>(1, 0) = (*Q)[i].y;
-      first.at<double>(2, 0) = (*Q)[i].z;
-      first.at<double>(3, 0) = 1;
+      first.at<Scalar>(0, 0) = (*Q)[i].x;
+      first.at<Scalar>(1, 0) = (*Q)[i].y;
+      first.at<Scalar>(2, 0) = (*Q)[i].z;
+      first.at<Scalar>(3, 0) = 1;
       transformed = *transformation * first;
-      (*Q)[i].x = transformed.at<double>(0, 0);
-      (*Q)[i].y = transformed.at<double>(1, 0);
-      (*Q)[i].z = transformed.at<double>(2, 0);
+      (*Q)[i].x = transformed.at<Scalar>(0, 0);
+      (*Q)[i].y = transformed.at<Scalar>(1, 0);
+      (*Q)[i].z = transformed.at<Scalar>(2, 0);
     }
   }
 #ifdef TEST_GLOBAL_TIMINGS
@@ -1439,15 +1104,16 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
 
 // The main 4PCS function. Computes the best rigid transformation and transfoms
 // Q toward P by this transformation.
-float MatchSuper4PCSImpl::ComputeTransformation(const std::vector<Point3D>& P,
+MatchSuper4PCSImpl::Scalar MatchSuper4PCSImpl::ComputeTransformation(const std::vector<Point3D>& P,
                                            std::vector<Point3D>* Q,
                                            cv::Mat* transformation) {
 
-  if (Q == nullptr || transformation == nullptr) return kLargeNumber;
+  if (Q == nullptr || transformation == nullptr)
+      return std::numeric_limits<Scalar>::max();
   Initialize(P, *Q);
 
   *transformation = cv::Mat(4, 4, CV_64F, cv::Scalar(0.0));
-  for (int i = 0; i < 4; ++i) transformation->at<double>(i, i) = 1.0;
+  for (int i = 0; i < 4; ++i) transformation->at<Scalar>(i, i) = 1.0;
   Perform_N_steps(number_of_trials_, transformation, Q);
 
 #ifdef TEST_GLOBAL_TIMINGS
@@ -1465,7 +1131,7 @@ MatchSuper4PCS::MatchSuper4PCS(const Match4PCSOptions& options)
 
 MatchSuper4PCS::~MatchSuper4PCS() {}
 
-float
+double
 MatchSuper4PCS::ComputeTransformation(const std::vector<Point3D>& P,
                                        std::vector<Point3D>* Q,
                                        cv::Mat* transformation) {

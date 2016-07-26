@@ -46,7 +46,7 @@
 
 #include "shared4pcs.h"
 
-namespace match_4pcs {
+namespace FastRegistration {
 class Match4PCSImpl;
 
 // Class for the computation of the 4PCS algorithm.
@@ -73,6 +73,6 @@ class Match4PCS {
  private:
   std::unique_ptr<Match4PCSImpl> pimpl_;
 };
-} // namespace match_4pcs
+} // namespace fastregistration
 
 #endif  // _4PCS_H_

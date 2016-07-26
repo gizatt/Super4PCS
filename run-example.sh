@@ -10,3 +10,7 @@ time -p ./build/Super4PCS -i hippo1.obj hippo2.obj -o 0.7 -d 0.01 -t 1000 -n 400
 time -p ./build/Super4PCS -i hippo1.obj hippo2.obj -o 0.75 -d 0.001 -t 1000 -n 4000 -r super4pcs_extreme.obj -m mat_super4pcs_extreme.txt
 time -p ./build/Super4PCS -i hippo1.obj hippo2.obj -o 0.7 -d 0.01 -t 1000 -n 400 -r 4pcs.obj -x -m mat_r4pcs.txt
 
+
+# part in whole matching
+# here the overlap parameter is computed relatively to the size of hippo2_sub.obj 
+time -p ./build/ Super4PCS -i hippo1.obj hippo2_sub.obj -o 0.7 -d 0.01 -t 1000 -n 200
