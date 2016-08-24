@@ -53,6 +53,7 @@
 
 #include <limits>
 #include <iostream>
+#include <numeric>  //iota
 
 // max depth of the tree
 #define KD_MAX_DEPTH 32
@@ -205,13 +206,46 @@ public:
 
     ~KdTree();
 
-    void doQueryK(const VectorType& p);
+    inline void doQueryK(const VectorType& p);
 
-    std::vector< VectorType >
-    doQueryDist(const VectorType& queryPoint,float sqdist);
+    /*!
+     * \brief Performs distance query and return vector coordinates
+     */
+    template<typename Container = std::vector<VectorType> >
+    inline void
+    doQueryDist(const VectorType& queryPoint,
+                Scalar sqdist,
+                Container& result){
+        _doQueryDistIndicesWithFunctor(queryPoint,
+                                      sqdist,
+                                      [&result,this](unsigned int i){
+            result.push_back(typename Container::value_type(mPoints[i]));
+        });
+    }
 
-    Index
-    doQueryRestrictedClosest(const VectorType& queryPoint, Scalar sqdist, int currentId = -1);
+    /*!
+     * \brief Performs distance query and return indices
+     */
+    template<typename IndexContainer = std::vector<Index> >
+    inline void
+    doQueryDistIndices(const VectorType& queryPoint,
+                       float sqdist,
+                       IndexContainer& result){
+        _doQueryDistIndicesWithFunctor(queryPoint,
+                                      sqdist,
+                                      [&result,this](unsigned int i){
+            result.push_back(typename IndexContainer::value_type(mIndices[i]));
+        });
+    }
+
+    /*!
+     * \brief Finds the closest element index within the range [0:sqrt(sqdist)]
+     * \param currentId Index of the querypoint if it belongs to the tree
+     */
+    inline Index
+    doQueryRestrictedClosestIndex(const VectorType& queryPoint,
+                                  Scalar sqdist,
+                                  int currentId = -1);
 
      EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -243,6 +277,15 @@ protected:
                     unsigned int targetCellsize,
                     unsigned int targetMaxDepth);
 
+
+    /*!
+     * \brief Performs distance query and pass the internal id to a functor
+     */
+    template<typename Functor >
+    inline void
+    _doQueryDistIndicesWithFunctor(const VectorType& queryPoint,
+                                   float sqdist,
+                                   Functor f);
 protected:
 
     PointList  mPoints;
@@ -314,8 +357,6 @@ KdTree<Scalar, Index>::~KdTree()
 
 /*!
 
-  Find the closest element within the range [0:sqrt(sqdist)]
-
   This algorithm uses the simple distance to the split plane to prune nodes.
   A more elaborated approach consists to track the closest corner of the cell
   relatively to the current query point. This strategy allows to save about 5%
@@ -332,9 +373,10 @@ KdTree<Scalar, Index>::~KdTree()
 */
 template<typename Scalar, typename Index>
 Index
-KdTree<Scalar, Index>::doQueryRestrictedClosest(const VectorType& queryPoint,
-                                         Scalar sqdist,
-                                         int currentId)
+KdTree<Scalar, Index>::doQueryRestrictedClosestIndex(
+        const VectorType& queryPoint,
+        Scalar sqdist,
+        int currentId)
 {
 
     Index  cl_id   = invalidIndex();
@@ -397,26 +439,23 @@ KdTree<Scalar, Index>::doQueryRestrictedClosest(const VectorType& queryPoint,
 }
 
 /*!
-
-    Performs distance query.
-
-
-  \see doQueryRestrictedClosest For more information about
-  algorithm.
+  \see doQueryRestrictedClosest For more information about the algorithm.
 
   This function is an alternative to doQueryK(const VectorType& queryPoint)
   that allow to perform the query by requesting a maximum distance instead of
   neighborhood size.
  */
 template<typename Scalar, typename Index>
-std::vector< typename KdTree<Scalar, Index>::VectorType >
-KdTree<Scalar, Index>::doQueryDist(const VectorType& queryPoint,float sqdist)
+template<typename Functor >
+void
+KdTree<Scalar, Index>::_doQueryDistIndicesWithFunctor(
+        const VectorType& queryPoint,
+        float sqdist,
+        Functor f)
 {
     mNodeStack[0].nodeId = 0;
     mNodeStack[0].sq = 0.f;
     unsigned int count = 1;
-
-    std::vector< VectorType >result;
 
     while (count)
     {
@@ -431,13 +470,13 @@ KdTree<Scalar, Index>::doQueryDist(const VectorType& queryPoint,float sqdist)
                 unsigned int end = node.start+node.size;
                 for (unsigned int i=node.start ; i<end ; ++i)
                     if ( (queryPoint - mPoints[i]).squaredNorm() < sqdist){
-                        result << mPoints[i];
+                        f(i);
                     }
             }
             else
             {
                 // replace the stack top by the farthest and push the closest
-                float new_off = queryPoint[node.dim] - node.splitValue;
+                Scalar new_off = queryPoint[node.dim] - node.splitValue;
                 if (new_off < 0.)
                 {
                     mNodeStack[count].nodeId  = node.firstChildId;
@@ -459,7 +498,6 @@ KdTree<Scalar, Index>::doQueryDist(const VectorType& queryPoint,float sqdist)
             --count;
         }
     }
-    return result;
 }
 
 template<typename Scalar, typename Index>
