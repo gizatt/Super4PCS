@@ -121,7 +121,7 @@ ENDIF(DEFINED ANN_DIR)
 ## Tests
 ################################################################################
 
-if(${SUPER4PCS_BUILD_TEST})
+if(DEFINED ${SUPER4PCS_BUILD_TEST})
 	include(cmake/ConfigureTesting.cmake)
 	add_subdirectory(tests EXCLUDE_FROM_ALL)
 endif(DEFINED ${SUPER4PCS_BUILD_TEST})
