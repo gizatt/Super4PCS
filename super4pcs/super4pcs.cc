@@ -560,8 +560,6 @@ bool MatchSuper4PCSImpl::TryOneBase() {
   Scalar distance1 = cv::norm(base_3D_[0] - base_3D_[1]);
   Scalar distance2 = cv::norm(base_3D_[2] - base_3D_[3]);
 
-  std::cout << "distances: " << distance1 << " " << distance2 << std::endl;
-
   vector<pair<int, int>> pairs1, pairs2;
   vector<Quadrilateral> congruent_quads;
 
@@ -573,8 +571,6 @@ bool MatchSuper4PCSImpl::TryOneBase() {
                   1, &pairs1);
   ExtractPairs(distance2, normal_angle2, distance_factor * options_.delta, 2,
                   3, &pairs2);
-
-  std::cout << pairs1.size() << " " << pairs2.size() << std::endl;
 
   if (pairs1.size() == 0 || pairs2.size() == 0) {
     return false;

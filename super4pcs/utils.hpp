@@ -228,8 +228,6 @@ bool TryQuadrilateral(Scalar &invariant1, Scalar &invariant2,
                   base[i], base[j], base[k], base[l],
                   local_invariant1, local_invariant2);
       // Retail the smallest distance and the best order so far.
-      std::cout << "segment_distance: " << segment_distance<<std::endl;
-      std::cout << "min_distance:     " << min_distance<<std::endl;
       if (segment_distance < min_distance) {
         min_distance = segment_distance;
         best1 = i;
@@ -238,14 +236,6 @@ bool TryQuadrilateral(Scalar &invariant1, Scalar &invariant2,
         best4 = l;
         invariant1 = local_invariant1;
         invariant2 = local_invariant2;
-
-        std::cout << "Swap: "
-                  << best1 << " "
-                  << best2 << " "
-                  << best3 << " "
-                  << best4 << " "
-                  << invariant1 << " "
-                  << invariant2 << std::endl;
       }
     }
   }
@@ -260,12 +250,6 @@ bool TryQuadrilateral(Scalar &invariant1, Scalar &invariant2,
   base2 = tmpId[best2];
   base3 = tmpId[best3];
   base4 = tmpId[best4];
-
-  std::cout << "Basis: "
-            << base1 << " "
-            << base2 << " "
-            << base3 << " "
-            << base4 << std::endl;
 
   return true;
 }
