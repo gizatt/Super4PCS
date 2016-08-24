@@ -144,13 +144,6 @@ public:
                          unsigned int id){
       return addElement(pos.template cast<Scalar>(), normal.template cast<Scalar>(), id);
   }
-
-  template <typename otherPoint1, typename otherPoint2>
-  inline bool addElement(const otherPoint1& pos,
-                         const otherPoint2& normal,
-                         unsigned int id){
-      return addElement(pos.template cast<Scalar>(), normal.template cast<Scalar>(), id);
-  }
   
   //! \return NULL if the grid does not exist or p is out of bound
   inline ChealMap* getMap(const Point& p) { 
@@ -212,28 +205,6 @@ public:
   inline void getNeighbors( const otherPoint1& p,
                             std::vector<unsigned int>&nei){
       return getNeighbors(p.template cast<Scalar>(), nei);
-  }
-
-  //! Get closest points in euclidean an normal space
-  template <typename otherPoint1, typename otherPoint2>
-  inline void getNeighbors( const otherPoint1& p,
-                            const otherPoint2& n,
-                     std::vector<unsigned int>&nei){
-      return getNeighbors(p.template cast<Scalar>(),
-                          n.template cast<Scalar>(),
-                          nei);
-  }
-
-  //! Get closest poitns in euclidean an normal space with angular deviation
-  template <typename otherPoint1, typename otherPoint2>
-  inline void getNeighbors( const otherPoint1& p,
-                            const otherPoint2& n,
-                            Scalar alpha,
-                            std::vector<unsigned int>&nei){
-      return getNeighbors(p.template cast<Scalar>(),
-                          n.template cast<Scalar>(),
-                          alpha,
-                          nei);
   }
 
   inline bool isValid() const {
