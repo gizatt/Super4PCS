@@ -43,13 +43,11 @@
     <ClInclude Include="io\io_ply.h" />
     <ClInclude Include="pairCreationFunctor.h" />
     <ClInclude Include="pairExtraction.h" />
+    <ClInclude Include="sampling.h" />
     <ClInclude Include="shared4pcs.h" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="utils.hpp" />
     <ClInclude Include="utils\timer.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="accelerators\CMakeLists.txt" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{EC169232-18F7-4DD8-9DEB-6AEF670BDD99}</ProjectGuid>

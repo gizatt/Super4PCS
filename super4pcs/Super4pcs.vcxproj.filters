@@ -105,10 +105,8 @@
     <ClInclude Include="utils.hpp">
       <Filter>Source Files\super4pcs</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <Text Include="accelerators\CMakeLists.txt">
-      <Filter>Source Files\super4pcs\accelerators</Filter>
-    </Text>
+    <ClInclude Include="sampling.h">
+      <Filter>Source Files\super4pcs</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
