@@ -691,12 +691,6 @@ bool MatchSuper4PCSImpl::TryOneBase() {
   return false;
 }
 
-struct eqstr {
-  bool operator()(const char* s1, const char* s2) const {
-    return strcmp(s1, s2) == 0;
-  }
-};
-
 // Initialize all internal data structures and data members.
 void MatchSuper4PCSImpl::Initialize(const std::vector<Point3D>& P,
                                const std::vector<Point3D>& Q) {
