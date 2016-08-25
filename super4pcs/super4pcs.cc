@@ -76,6 +76,12 @@
 #   include "utils/timer.h"
 #endif
 
+// uncomment to trace LCP changes (values + matrix) into file
+//#define TEST_TRACE_LCP
+// uncomment to measure subroutines timings recording
+//#define TEST_GLOBAL_TIMINGS
+
+// experimental: disable for scale estimation
 //#define MULTISCALE
 
 namespace FastRegistration {
@@ -1029,6 +1035,19 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
     Timer t (true);
 #endif
 
+#ifdef TEST_TRACE_LCP
+  ofstream myfile;
+  myfile.open("LCP_trace.txt", ios::out | ios::app);
+  float last_best_LCPTrace = best_LCP_;
+
+  myfile << "entry "
+         << best_LCP_ << " "
+         << 0 << '\n'
+         << transform_
+         << endl;
+  Scalar last_printed_LCP = best_LCP_;
+#endif
+
   // The transformation has been computed between the two point clouds centered
   // at the origin, we need to recompute the translation to apply it to the original clouds
   auto prepareTransformMatrix = [this]() {
@@ -1062,6 +1081,20 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
     printf("done: %d%c best: %f                  \r",
            static_cast<int>(fraction * 100), '%', best_LCP_);
     fflush(stdout);
+
+#ifdef TEST_TRACE_LCP
+    if (best_LCP_ > last_printed_LCP) {
+        last_printed_LCP = best_LCP_;
+
+        prepareTransformMatrix();
+
+        myfile << "entry "
+            << best_LCP_ << " "
+            << (clock() - t0) / CLOCKS_PER_SEC << '\n'
+            << transform_
+            << endl;
+    }
+#endif
     // ok means that we already have the desired LCP.
     if (ok || i > number_of_trials_ || fraction >= 0.99 || best_LCP_ == 1.0) break;
   }
@@ -1070,7 +1103,9 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
   if (best_LCP_ > last_best_LCP) {
     *Q = Q_copy_;
 
+#ifndef TEST_TRACE_LCP
     prepareTransformMatrix();
+#endif
     cv::eigen2cv( transform_, *transformation );
 
     // Transforms Q by the new transformation.
@@ -1088,6 +1123,9 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
   }
 #ifdef TEST_GLOBAL_TIMINGS
     totalTime += Scalar(t.elapsed().count()) / Scalar(CLOCKS_PER_SEC);
+#endif
+#ifdef TEST_TRACE_LCP
+    myfile.close();
 #endif
 
   return ok || current_trial_ >= number_of_trials_;
