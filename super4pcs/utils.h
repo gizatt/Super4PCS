@@ -2,7 +2,7 @@
 #define UTILS_H
 
 #include <limits>
-#include <cv.h>
+#include <opencv2/core/core.hpp>
 
 
 namespace FastRegistration {
