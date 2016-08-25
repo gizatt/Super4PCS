@@ -99,6 +99,12 @@
     <ClInclude Include="..\3rdparty\chealpix\include\chealpix.h">
       <Filter>Source Files\3rdParty</Filter>
     </ClInclude>
+    <ClInclude Include="utils.h">
+      <Filter>Source Files\super4pcs</Filter>
+    </ClInclude>
+    <ClInclude Include="utils.hpp">
+      <Filter>Source Files\super4pcs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Text Include="accelerators\CMakeLists.txt">

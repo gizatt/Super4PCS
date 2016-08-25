@@ -44,6 +44,8 @@
     <ClInclude Include="pairCreationFunctor.h" />
     <ClInclude Include="pairExtraction.h" />
     <ClInclude Include="shared4pcs.h" />
+    <ClInclude Include="utils.h" />
+    <ClInclude Include="utils.hpp" />
     <ClInclude Include="utils\timer.h" />
   </ItemGroup>
   <ItemGroup>
