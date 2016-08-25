@@ -47,6 +47,7 @@
     <ClInclude Include="shared4pcs.h" />
     <ClInclude Include="utils.h" />
     <ClInclude Include="utils.hpp" />
+    <ClInclude Include="utils\disablewarnings.h" />
     <ClInclude Include="utils\timer.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
