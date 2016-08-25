@@ -1029,6 +1029,25 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
     Timer t (true);
 #endif
 
+  // The transformation has been computed between the two point clouds centered
+  // at the origin, we need to recompute the translation to apply it to the original clouds
+  auto prepareTransformMatrix = [this]() {
+    Eigen::Matrix<Scalar, 3, 1> centroid_P, centroid_Q;
+    cv::Mat first(3, 1, CV_64F);
+    first.at<Scalar>(0, 0) = centroid_P_.x;
+    first.at<Scalar>(1, 0) = centroid_P_.y;
+    first.at<Scalar>(2, 0) = centroid_P_.z;
+    cv::cv2eigen(first, centroid_P);
+    first.at<Scalar>(0, 0) = centroid_Q_.x;
+    first.at<Scalar>(1, 0) = centroid_Q_.y;
+    first.at<Scalar>(2, 0) = centroid_Q_.z;
+    cv::cv2eigen(first, centroid_Q);
+
+    Eigen::Matrix<Scalar, 3, 3> rot, scale;
+    Eigen::Transform<Scalar, 3, Eigen::Affine>(transform_).computeRotationScaling(&rot, &scale);
+    transform_.col(3) = (qcentroid1_ + centroid_P - (rot * scale * (qcentroid2_ + centroid_Q))).homogeneous();
+  };
+
   Scalar last_best_LCP = best_LCP_;
   bool ok;
   int64 t0 = clock();
@@ -1051,25 +1070,7 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
   if (best_LCP_ > last_best_LCP) {
     *Q = Q_copy_;
 
-      // The transformation has been computed between the two point clouds centered
-    // at the origin, we need to recompute the translation to apply it to the original clouds
-    {
-        Eigen::Matrix<Scalar, 3,1> centroid_P,centroid_Q;
-        cv::Mat first(3, 1, CV_64F);
-        first.at<Scalar>(0, 0) = centroid_P_.x;
-        first.at<Scalar>(1, 0) = centroid_P_.y;
-        first.at<Scalar>(2, 0) = centroid_P_.z;
-        cv::cv2eigen(first, centroid_P);
-        first.at<Scalar>(0, 0) = centroid_Q_.x;
-        first.at<Scalar>(1, 0) = centroid_Q_.y;
-        first.at<Scalar>(2, 0) = centroid_Q_.z;
-        cv::cv2eigen(first, centroid_Q);
-
-        Eigen::Matrix<Scalar, 3, 3> rot, scale;
-        Eigen::Transform<Scalar, 3, Eigen::Affine> (transform_).computeRotationScaling(&rot, &scale);
-        transform_.col(3) = (qcentroid1_ + centroid_P - ( rot * scale * (qcentroid2_ + centroid_Q))).homogeneous();
-    }
-
+    prepareTransformMatrix();
     cv::eigen2cv( transform_, *transformation );
 
     // Transforms Q by the new transformation.
