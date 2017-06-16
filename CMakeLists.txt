@@ -103,27 +103,16 @@ endif (${OpenCV_VERSION} GREATER "3.0.0")
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 
 
-find_path(ANN_DIR ann_1.1.2)
-IF(DEFINED ANN_DIR)
-  set(ANN_INCLUDE_DIR "${ANN_DIR}/include")
-  include_directories( ${ANN_INCLUDE_DIR} )
-  
-  if (MSVC)
-	set(ANN_LIBS "${ANN_DIR}/lib/libANN.dll")
-  else()
-	set(ANN_LIBS "${ANN_DIR}/lib/libANN.a")
-  endif()
-ENDIF(DEFINED ANN_DIR)
+set(ANN_DIR ${PROJECT_SOURCE_DIR}/3rdparty/ann_1.1.2)
+set(ANN_INCLUDE_DIR "${ANN_DIR}/include")
+include_directories( ${ANN_INCLUDE_DIR} )
 
-
-################################################################################
-## Tests
-################################################################################
-
-if(DEFINED ${SUPER4PCS_BUILD_TEST})
-	include(cmake/ConfigureTesting.cmake)
-	add_subdirectory(tests EXCLUDE_FROM_ALL)
-endif(DEFINED ${SUPER4PCS_BUILD_TEST})
+add_custom_target(
+   ann_lib
+   COMMAND mkdir -p lib && make linux-g++
+   WORKING_DIRECTORY ${ANN_DIR}
+)
+set(ANN_LIBS "${ANN_DIR}/lib/libANN.a")
 
 ################################################################################
 ## Project files
@@ -154,3 +143,4 @@ TARGET_LINK_LIBRARIES(${PROJECT_NAME} super4pcs_algo)
 TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${OpenCV_LIBS} )
 TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${ANN_LIBS} )
 TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${Chealpix_LIBS} )
+add_dependencies(${PROJECT_NAME} ann_lib)
