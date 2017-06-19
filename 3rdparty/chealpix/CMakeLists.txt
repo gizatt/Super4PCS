@@ -14,4 +14,4 @@ include_directories(${Chealpix_INCLUDE_DIR})
 
 add_library(${PROJECT_NAME} SHARED ${PROJECT_SOURCE_DIR}/src/chealpix.c)
 target_link_libraries(${PROJECT_NAME} ${CFITSIO_LIBRARIES})
-
+install(TARGETS ${PROJECT_NAME} DESTINATION lib)

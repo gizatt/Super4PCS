@@ -20,5 +20,6 @@ set(io_INCLUDE
 # use library target, to make accessible to test routines
 add_library(super4pcs_io ${io_SRC} ${io_INCLUDE})
 target_link_libraries(super4pcs_io ${OpenCV_LIBS} )
+install(TARGETS super4pcs_io DESTINATION lib)
 
 

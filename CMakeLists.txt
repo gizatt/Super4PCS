@@ -87,7 +87,7 @@ endif (${ENABLE_TIMING})
 ## Dependencies
 ################################################################################
 
-add_subdirectory(${PROJECT_SOURCE_DIR}/3rdparty/chealpix EXCLUDE_FROM_ALL)
+add_subdirectory(${PROJECT_SOURCE_DIR}/3rdparty/chealpix)
 include_directories(${Chealpix_INCLUDE_DIR})
 
 find_package(Eigen3 REQUIRED)
@@ -144,3 +144,5 @@ TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${OpenCV_LIBS} )
 TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${ANN_LIBS} )
 TARGET_LINK_LIBRARIES(${PROJECT_NAME} ${Chealpix_LIBS} )
 add_dependencies(${PROJECT_NAME} ann_lib)
+
+install(TARGETS super4pcs_algo DESTINATION lib)

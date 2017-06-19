@@ -21,3 +21,4 @@ set(accel_INCLUDE
     ${accel_ROOT}/utils.h)
 
 add_library(super4pcs_accel ${accel_SRC} ${accel_INCLUDE})
+install(TARGETS super4pcs_accel DESTINATION lib)
