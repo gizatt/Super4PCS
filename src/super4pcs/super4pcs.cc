@@ -629,6 +629,9 @@ bool MatchSuper4PCSImpl::SelectRandomTriangle(int* base1, int* base2, int* base3
     cv::Point3f w = sampled_P_3D_[third_point] - sampled_P_3D_[first_point];
     // We try to have wide triangles but still not too large.
     float how_wide = cv::norm(u.cross(w));
+    
+    ///printf("(%d, %d, %d): (%f, %f, %f) and (%f, %f, %f)\n", first_point, second_point, third_point, u.x, u.y, u.z, w.x, w.y, w.z);
+    //printf("Trying triangle with %f vs max base diam %f\n", how_wide, max_base_diameter_);
     if (how_wide > best_wide && cv::norm(u) < max_base_diameter_ &&
         cv::norm(w) < max_base_diameter_) {
       best_wide = how_wide;
@@ -659,6 +662,7 @@ bool MatchSuper4PCSImpl::SelectQuadrilateral(double* invariant1, double* invaria
   while (current_trial < kNumberOfDiameterTrials) {
     // Select a triangle if possible. otherwise fail.
     if (!SelectRandomTriangle(base1, base2, base3)){
+      printf("Failed to select random triangle.\n");
       return false;
     }
 
@@ -692,11 +696,13 @@ bool MatchSuper4PCSImpl::SelectQuadrilateral(double* invariant1, double* invaria
       *base4 = -1;
       double best_distance = FLT_MAX;
       // Go over all points in P.
+      //printf("Starting search for 4th pt over %lu cands...\n", sampled_P_3D_.size());
       for (unsigned int i = 0; i < sampled_P_3D_.size(); ++i) {
         double d1 = PointsDistance(sampled_P_3D_[i], sampled_P_3D_[*base1]);
         double d2 = PointsDistance(sampled_P_3D_[i], sampled_P_3D_[*base2]);
         double d3 = PointsDistance(sampled_P_3D_[i], sampled_P_3D_[*base3]);
         float too_small = max_base_diameter_ * kBaseTooSmall;
+        //printf("\t D1 %f, D2 %f, D3 %f, max_base_diameter_ %f\n", d1, d2, d3, max_base_diameter_);
         if (d1 >= too_small && d2 >= too_small && d3 >= too_small) {
           // Not too close to any of the first 3.
           double distance =
@@ -720,6 +726,7 @@ bool MatchSuper4PCSImpl::SelectQuadrilateral(double* invariant1, double* invaria
   }
   
   // We failed to find good enough base..
+  printf("Failed to find good quadrilateral.\n");
   return false;
 }
 
@@ -894,6 +901,8 @@ bool MatchSuper4PCSImpl::TryOneBase() {
     return false;
   }
 #endif
+
+  // printf("Base ids: %d, %d, %d, %d\n", base_id1, base_id2, base_id3, base_id4); 
 
   // Computes distance between pairs.
   double distance1 = PointsDistance(base_3D_[0], base_3D_[1]);
@@ -1110,6 +1119,7 @@ void MatchSuper4PCSImpl::Initialize(const std::vector<Point3D>& P,
     centroid_P_.z += sampled_P_3D_[i].z;
   }
 
+  // printf("P centroid: (%f, %f, %f) / %lu\n", centroid_P_.x, centroid_P_.y, centroid_P_.z, sampled_P_3D_.size());
   centroid_P_.x /= sampled_P_3D_.size();
   centroid_P_.y /= sampled_P_3D_.size();
   centroid_P_.z /= sampled_P_3D_.size();
@@ -1168,6 +1178,8 @@ void MatchSuper4PCSImpl::Initialize(const std::vector<Point3D>& P,
   }
   //switch from unit space to original space
   P_diameter_ = pcfunctor_.unitToWorld(P_diameter_);
+
+  printf("Estimated P diameter of %f\n", P_diameter_);
 
   // Mean distance and a bit more... We increase the estimation to allow for
   // noise, wrong estimation and non-uniform sampling.
@@ -1442,7 +1454,6 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
 float MatchSuper4PCSImpl::ComputeTransformation(const std::vector<Point3D>& P,
                                            std::vector<Point3D>* Q,
                                            cv::Mat* transformation) {
-
   if (Q == nullptr || transformation == nullptr) return kLargeNumber;
   Initialize(P, *Q);
 
