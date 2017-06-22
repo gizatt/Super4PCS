@@ -1389,6 +1389,8 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
   float last_best_LCP = best_LCP_;
   bool ok;
   int64 t0 = clock();
+  int num_completed = 0;
+  printf("Aiming to complete %d trials.\n", number_of_trials_);
   for (int i = current_trial_; i < current_trial_ + n; ++i) {
     ok = TryOneBase();
 
@@ -1400,9 +1402,12 @@ bool MatchSuper4PCSImpl::Perform_N_steps(int n, cv::Mat* transformation,
     printf("done: %d%c best: %f                  \r",
            static_cast<int>(fraction * 100), '%', best_LCP_);
     fflush(stdout);
+    num_completed++;
     // ok means that we already have the desired LCP.
     if (ok || i > number_of_trials_ || fraction >= 0.99 || best_LCP_ == 1.0) break;
   }
+
+  printf("Fraction of desired trials completed: (%d / %d) = %f\n", num_completed, number_of_trials_, ((double)num_completed) / ((double)number_of_trials_));
 
   current_trial_ += n;
   if (best_LCP_ > last_best_LCP) {
